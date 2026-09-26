@@ -89,7 +89,61 @@ static int install_signal_handlers(void)
 
     return 0;
 }
+//ingresar conexion para consumers, esperar si esta llena
+static int meter_conexion_cola(connection_t connection)
+{
+    pthread_mutex_lock(&g_cola.mutex);
 
+    while (g_cola.count == Capacidad_Cola && !g_cola.closed) {
+        pthread_cond_wait(&g_cola.not_full, &g_cola.mutex);
+    }
+
+    if (g_cola.closed) {
+        pthread_mutex_unlock(&g_cola.mutex);
+        return -1;
+    }
+
+    g_cola.items[g_cola.tail] = connection;
+    g_cola.tail = (g_cola.tail + 1) % Capacidad_Cola;
+    ++g_cola.count;
+
+    pthread_cond_signal(&g_cola.not_empty);
+    pthread_mutex_unlock(&g_cola.mutex);
+    return 0;
+}
+
+// funcion para los consumer, sacan una conexion y esperan si esta vacia
+static int sacar_conexion_cola(connection_t *connection)
+{
+    pthread_mutex_lock(&g_cola.mutex);
+
+    while (g_cola.count == 0 && !g_cola.closed) {
+        pthread_cond_wait(&g_cola.not_empty, &g_cola.mutex);
+    }
+
+    if (g_cola.count == 0 && g_cola.closed) {
+        pthread_mutex_unlock(&g_cola.mutex);
+        return -1;
+    }
+
+    *connection = g_cola.items[g_cola.head];
+    g_cola.head = (g_cola.head + 1) % Capacidad_Cola;
+    --g_cola.count;
+
+    pthread_cond_signal(&g_cola.not_full);
+    pthread_mutex_unlock(&g_cola.mutex);
+    return 0;
+}
+
+/* Cierra la cola y despierta a todos los hilos para que terminen */
+static void cerrar_cola(void)
+{
+    pthread_mutex_lock(&g_cola.mutex);
+    g_cola.closed = 1;
+    pthread_cond_broadcast(&g_cola.not_empty);
+    pthread_cond_broadcast(&g_cola.not_full);
+    pthread_mutex_unlock(&g_cola.mutex);
+}
 static void *handle_connection(void *arg)
 {
     connection_t *conn = arg;
