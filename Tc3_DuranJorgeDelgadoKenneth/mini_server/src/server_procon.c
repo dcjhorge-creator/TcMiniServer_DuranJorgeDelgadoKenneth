@@ -15,6 +15,8 @@
 #define DEFAULT_PORT 8080
 #define LISTEN_BACKLOG 64
 #define DRAIN_SECONDS 1
+#define Consumers 4
+#define Capacidad_Cola 64
 
 static volatile sig_atomic_t g_running = 1;
 
@@ -31,6 +33,32 @@ typedef struct {
     unsigned long connection_id;
 } connection_t;
 
+/* Estructura para la cola, producer metera conexiones que acepta y los consumers las sacan*/
+typedef struct {
+    connection_t items[Capacidad_Cola];
+    size_t head;
+    size_t tail;
+    size_t count;
+    int closed;
+    pthread_mutex_t mutex;
+    pthread_cond_t not_empty; //despiertar a los consumers
+    pthread_cond_t not_full;//despertar al producer
+} cola_conexiones_t;
+
+static volatile sig_atomic_t g_running = 1;
+static unsigned long g_requests_served = 0;
+static pthread_mutex_t candado = PTHREAD_MUTEX_INITIALIZER;
+
+/* Se crea la Cola global compartida por todos los hilos */
+static cola_conexiones_t g_cola = {
+    .head = 0,
+    .tail = 0,
+    .count = 0,
+    .closed = 0,
+    .mutex = PTHREAD_MUTEX_INITIALIZER,
+    .not_empty = PTHREAD_COND_INITIALIZER,
+    .not_full = PTHREAD_COND_INITIALIZER
+};
 static void on_sigint(int signum)
 {
     (void)signum;
