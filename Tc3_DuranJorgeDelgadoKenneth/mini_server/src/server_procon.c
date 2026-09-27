@@ -45,9 +45,6 @@ typedef struct {
     pthread_cond_t not_full;//despertar al producer
 } cola_conexiones_t;
 
-static volatile sig_atomic_t g_running = 1;
-static unsigned long g_requests_served = 0;
-static pthread_mutex_t candado = PTHREAD_MUTEX_INITIALIZER;
 
 /* Se crea la Cola global compartida por todos los hilos */
 static cola_conexiones_t g_cola = {
