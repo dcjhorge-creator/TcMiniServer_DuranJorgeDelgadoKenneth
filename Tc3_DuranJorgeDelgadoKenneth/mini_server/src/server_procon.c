@@ -229,80 +229,72 @@ return value;
 
 int main(int argc, char **argv)
 {
-    if (install_signal_handlers() < 0)
-    {
-        return EXIT_FAILURE;
-    }
-    unsigned short port = parse_port(argc, argv);
-
-    int listen_file_descriptor = nu_listen(port, LISTEN_BACKLOG);
-
-    if (listen_file_descriptor < 0)
-    {
-        return EXIT_FAILURE;
-    }
-
-    printf("listening on port %u — Ctrl-C to stop\n", port);
-    fflush(stdout);
-
-    unsigned long accepted = 0;
-
-    while (g_running)
-    {
-        int client_file_descriptor = accept(listen_file_descriptor, NULL, NULL);
-        if (client_file_descriptor < 0)
-        {
-            if (errno == EINTR)
-            {
-                continue;
-            }
-            perror("accept");
-            break;
-        }
-        connection_t *conn = malloc(sizeof(connection_t));
-
-        if (conn == NULL)
-        {
-            fprintf(stderr, "out of memory, dropping connection\n");
-            close(client_file_descriptor);
-            continue;
-        }
-
-        conn->file_descriptor = client_file_descriptor;
-        conn->connection_id = ++accepted;
-
-        pthread_t thread_id;
-
-        int pthread_created = pthread_create(&thread_id, NULL, handle_connection, conn);
-        //vamos donde se crea el hilo y vemos la función handle_connection, que es la que se ejecutará en el hilo creado
-        //ire a esa funcion para ver si hay alguna condición de carrera al actualizar la variable global g_requests_served
-
-        if (pthread_created != 0)
-        {
-            fprintf(stderr, "pthread_create failed %s\n", strerror(pthread_created));
-            close(client_file_descriptor);
-            free(conn);
-            --accepted;
-            continue;
-        }
-        pthread_created = pthread_detach(thread_id);
-        if (pthread_created != 0)
-        {
-            fprintf(stderr, "pthread_detach failed %s\n", strerror(pthread_created));
-        }
-
-    }
-
-    if (close(listen_file_descriptor))
-    {
-        perror("close(listen_file_descriptor)");
-    }
-
-    sleep(DRAIN_SECONDS);
-
-    printf("\naccepted: %lu\n", accepted);
-    printf("served:   %lu\n", g_requests_served);
-    printf("lost:     %ld\n", (long)accepted - (long)g_requests_served);
-
-    return EXIT_SUCCESS;
+if (install_signal_handlers() < 0) {
+return EXIT_FAILURE;
 }
+unsigned short port = parse_port(argc, argv);
+long consumer_count = parse_consumers(argc, argv);
+int listen_file_descriptor = nu_listen(port, LISTEN_BACKLOG);
+if (listen_file_descriptor < 0) {
+return EXIT_FAILURE;
+}
+pthread_t *consumers = calloc((size_t)consumer_count, sizeof(*consumers));
+if (consumers == NULL) {
+fprintf(stderr, "sin memoria\n");
+close(listen_file_descriptor);
+return EXIT_FAILURE;
+}
+long started = 0;
+for (long i = 0; i < consumer_count; ++i) {
+int pthread_created = pthread_create(&consumers[i], NULL,
+consumer, (void *)(i + 1));
+if (pthread_created != 0) {
+fprintf(stderr, "pthread_create fallo: %s\n",
+strerror(pthread_created));
+break;
+}
+++started;
+}
+printf("servidor productor-consumidor escuchando en puerto %u con %ld consumidor(es)
+— Ctrl-C para detener\n",
+port, started);
+fflush(stdout);
+unsigned long accepted = 0;
+while (g_running) {
+int client_file_descriptor = accept(listen_file_descriptor, NULL, NULL);
+if (client_file_descriptor < 0) {
+if (errno == EINTR) {
+continue;
+}
+perror("accept");
+break;
+}
+connection_t connection;
+connection.file_descriptor = client_file_descriptor;
+connection.connection_id = ++accepted;
+if (meter_conexion_cola(connection) < 0) {
+close(client_file_descriptor);
+break;
+}
+}
+if (close(listen_file_descriptor) < 0) {
+perror("close(listen_file_descriptor)");
+}
+cerrar_cola();
+for (long i = 0; i < started; ++i) {
+int rc = pthread_join(consumers[i], NULL);
+if (rc != 0) {
+fprintf(stderr, "pthread_join: %s\n", strerror(rc));
+}
+}
+free(consumers);
+sleep(DRAIN_SECONDS);
+pthread_mutex_lock(&candado);
+unsigned long served = g_requests_served;
+pthread_mutex_unlock(&candado);
+printf("\naceptadas: %lu\n", accepted);
+printf("atendidas: %lu\n", served);
+printf("perdidas: %ld\n", (long)accepted - (long)served);
+return EXIT_SUCCESS;
+}
+
