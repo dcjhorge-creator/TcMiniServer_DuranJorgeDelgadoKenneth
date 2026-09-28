@@ -210,6 +210,23 @@ static unsigned short parse_port(int argc, char **argv)
     return (unsigned short)value;
 }
 
+// Lee la cantidad de hilos desde argv[2] o usa el valor por defecto
+static long parse_consumers(int argc, char **argv)
+{
+if (argc < 3) {
+return Consumers;
+}
+char *end = NULL;
+errno = 0;
+long value = strtol(argv[2], &end, 10);
+if (errno != 0 || end == argv[2] || *end != '\0' || value <= 0) {
+fprintf(stderr, "cantidad de consumidores invalida '%s', usando %d\n",
+argv[2], Consumers);
+return Consumers;
+}
+return value;
+}
+
 int main(int argc, char **argv)
 {
     if (install_signal_handlers() < 0)
