@@ -141,6 +141,29 @@ static void cerrar_cola(void)
     pthread_cond_broadcast(&g_cola.not_full);
     pthread_mutex_unlock(&g_cola.mutex);
 }
+/* Hilo consumidor: atiende conexiones de la cola hasta que se cierre */
+static void *consumer(void *arg)
+{
+long consumer_id = (long)arg;
+connection_t connection;
+while (sacar_conexion_cola(&connection) == 0) {
+printf("[Consumidor %ld] atendiendo conexion %lu\n",
+consumer_id, connection.connection_id);
+fflush(stdout);
+if (nu_drain_request(connection.file_descriptor) >= 0) {
+(void)nu_send_response(connection.file_descriptor,
+connection.connection_id);
+}
+if (close(connection.file_descriptor) < 0) {
+perror("close(file_descriptor)");
+}
+pthread_mutex_lock(&candado);
+++g_requests_served;
+pthread_mutex_unlock(&candado);
+}
+return NULL;
+}
+
 static void *handle_connection(void *arg)
 {
     connection_t *conn = arg;
