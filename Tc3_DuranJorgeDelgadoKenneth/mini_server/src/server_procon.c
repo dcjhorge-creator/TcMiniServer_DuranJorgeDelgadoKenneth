@@ -164,31 +164,7 @@ pthread_mutex_unlock(&candado);
 return NULL;
 }
 
-static void *handle_connection(void *arg)
-{
-    connection_t *conn = arg;
 
-    printf("[Handling connection %lu] accepted\n", conn->connection_id);
-    fflush(stdout);
-
-    if (nu_drain_request(conn->file_descriptor) < 0)
-    {
-        (void)nu_send_response(conn->file_descriptor, conn->connection_id);
-    }
-
-    unsigned long current = g_requests_served;
-    sched_yield();
-    pthread_mutex_lock(&candado);//bloqueo el mutex para proteger la variable global g_requests_served
-    g_requests_served = current + 1;//aqui esta la condición de carrera, ya que varios hilos pueden leer y escribir en g_requests_servedl mismo tiempo, lo que puede dar lugar a resultados incorrectos o inconsistentes. Para corregirlo, se debe usar un mutex para proteger el acceso a la variable global g_requests_served.
-    pthread_mutex_unlock(&candado);//desbloqueo el mutex para permitir que otros hilos accedan a la variable global g_requests_served
-
-    if (close(conn->file_descriptor) < 0)
-        perror("close(file_descriptor)");
-
-    free(conn);
-    return NULL;
-
-}
 
 static unsigned short parse_port(int argc, char **argv)
 {
