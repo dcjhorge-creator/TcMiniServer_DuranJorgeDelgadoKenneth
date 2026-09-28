@@ -231,7 +231,7 @@ break;
 }
 ++started;
 }
-printf("servidor productor-consumidor escuchando en puerto %u con %ld consumidor(es) "
+printf("servidor productor-consumidor esperando en puerto %u con %ld consumidor(es) "
 "— Ctrl-C para detener\n",
 port, started);
 fflush(stdout);
